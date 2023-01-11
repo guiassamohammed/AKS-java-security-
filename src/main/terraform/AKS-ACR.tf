@@ -9,8 +9,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
        enabled = true
        azure_active_directory{
           managed = true
-
-
+          admin_group_object_ids = [var.aks_admin_group_id]
+          tenant_id = var.tenant_id
        }
     }
        
@@ -54,7 +54,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
       }
       oms_agent {
       enabled = true
-      log_analytics_workspace_id =  
+      log_analytics_workspace_id =  azurerm_log_analytics_workspace.main.id
       }
 
     }
@@ -70,7 +70,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
 }
 
-resource "azurerm_log_analytics_workspac" "main" {
+resource "azurerm_log_analytics_workspace" "main" {
 
   name = "${var.aks-prefix}-lg-workspace"
   location = azurerm_resource_group.location
@@ -79,3 +79,38 @@ resource "azurerm_log_analytics_workspac" "main" {
   retention_in_days= var.log_retention_in_days
 }
 
+
+resource "azurerm_log_analytics_solution" "container" {
+  solution_name = "ContainerInsights"
+  location = azurerm_resource_group.aks.location
+  resource_group_name = azurerm_resource_group.aks.name
+  workspace_resource_id = azurerm_log_analytics_workspace.main.id
+  workspace_name = azurerm_log_analytics_workspace.main.name
+  plan {
+    publisher = "Microsoft"
+    product   = "OMSGallery/ContainerInsights"
+  }
+ 
+}
+
+resource "azurerm_container_registry" "acr" {
+  name= var.azure_acr
+  resource_group_name = azurerm_resource_group.aks.name
+  location = azurerm_resource_group.aks.location
+  sku = "Standard"
+  admin_enabled = false
+  
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+
+  provisioner local-exec {
+
+    command = "az aks update --resource-group ${azurerm_resource_group.aks.name} --name ${var.aks-prefix}-aks  --attach-acr= ${var.azure_acr} " 
+    environment = {
+            AZURE_EXTENSION_USE_DYNAMIC_INSTALL = "yes_without_prompt"
+     }
+
+  }
+
+
+}
